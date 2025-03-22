@@ -9,6 +9,67 @@ use schema public;
 
 
 
+
+-------------------------------------------------------------------------------------------------
+-- pivot
+
+CREATE OR REPLACE temp TABLE quarterly_sales(
+  empid INT, 
+  amount INT, 
+  quarter TEXT)
+  AS SELECT * FROM VALUES
+    (1, 10000, '2023_Q1'),
+    (1, 400, '2023_Q1'),
+    (2, 4500, '2023_Q1'),
+    (2, 35000, '2023_Q1'),
+    (1, 5000, '2023_Q2'),
+    (1, 3000, '2023_Q2'),
+    (2, 200, '2023_Q2'),
+    (2, 90500, '2023_Q2'),
+    (1, 6000, '2023_Q3'),
+    (1, 5000, '2023_Q3'),
+    (2, 2500, '2023_Q3'),
+    (2, 9500, '2023_Q3'),
+    (1, 8000, '2023_Q4'),
+    (1, 10000, '2023_Q4'),
+    (2, 800, '2023_Q4'),
+    (2, 4500, '2023_Q4');
+
+
+select * from quarterly_sales;
+
+SELECT *
+  FROM quarterly_sales
+    PIVOT(SUM(amount) FOR quarter IN (ANY ORDER BY quarter))
+  ORDER BY empid;
+
+CREATE OR REPLACE temp TABLE ad_campaign_types_by_quarter(
+  quarter VARCHAR,
+  television BOOLEAN,
+  radio BOOLEAN,
+  print BOOLEAN)
+  AS SELECT * FROM VALUES
+    ('2023_Q1', TRUE, FALSE, FALSE),
+    ('2023_Q2', FALSE, TRUE, TRUE),
+    ('2023_Q3', FALSE, TRUE, FALSE),
+    ('2023_Q4', TRUE, FALSE, TRUE);
+
+select * from ad_campaign_types_by_quarter;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 -------------------------------------------------------------------------------------------------
 -- object agg
 -- use role accountadmin;
