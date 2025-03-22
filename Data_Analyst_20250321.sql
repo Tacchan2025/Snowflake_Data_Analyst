@@ -38,10 +38,12 @@ CREATE OR REPLACE temp TABLE quarterly_sales(
 
 select * from quarterly_sales;
 
-SELECT *
-  FROM quarterly_sales
-    PIVOT(SUM(amount) FOR quarter IN (ANY ORDER BY quarter))
-  ORDER BY empid;
+select *
+    from quarterly_sales
+        pivot(sum(amount) for quarter in (any order by quarter))
+    order by empid
+;
+
 
 CREATE OR REPLACE temp TABLE ad_campaign_types_by_quarter(
   quarter VARCHAR,
@@ -57,7 +59,25 @@ CREATE OR REPLACE temp TABLE ad_campaign_types_by_quarter(
 select * from ad_campaign_types_by_quarter;
 
 
+select *
+from quarterly_sales
+  pivot(sum(amount) for quarter in (
+    select distinct quarter
+    from ad_campaign_types_by_quarter
+    where television = true
+    order by quarter
+)
+)
+order by empid
+;
 
+
+select *
+    from quarterly_sales
+        pivot(sum(amount) for quarter in ('2023_Q1', '2023_Q2', '2023_Q3')
+        )
+order by empid
+;
 
 
 
