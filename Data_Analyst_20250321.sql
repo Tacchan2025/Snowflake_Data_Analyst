@@ -4,6 +4,39 @@ use database tacchan_db;
 use schema public;
 -------------------------------------------------------------------------------------------------
 
+-------------------------------------------------------------------------------------------------
+-- row access policy
+
+
+
+-------------------------------------------------------------------------------------------------
+-- object agg
+-- use role accountadmin;
+drop table objectagg_example;
+
+CREATE OR REPLACE temp TABLE objectagg_example(g NUMBER, k VARCHAR(30), v VARIANT);
+INSERT INTO objectagg_example SELECT 0, 'name', 'Joe'::VARIANT;
+INSERT INTO objectagg_example SELECT 0, 'age', 21::VARIANT;
+INSERT INTO objectagg_example SELECT 1, 'name', 'Sue'::VARIANT;
+INSERT INTO objectagg_example SELECT 1, 'zip', 94401::VARIANT;
+
+SELECT * FROM objectagg_example;
+
+select object_agg(k, v) from objectagg_example group by g;
+
+select seq, key, value
+    from (select object_agg(k, v) o from objectagg_example group by g),
+        lateral flatten(input => o);
+
+-------------------------------------------------------------------------------------------------
+-- Numeric type
+drop table t1;
+
+create temp table t1 (c1 number(2, 1));
+insert into t1 values (9);
+insert into t1 values (0.1);
+
+select * from t1;
 
 -------------------------------------------------------------------------------------------------
 -- sp
