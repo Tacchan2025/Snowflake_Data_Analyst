@@ -7,6 +7,210 @@ use schema public;
 -------------------------------------------------------------------------------------------------
 -- row access policy
 
+-------------------------------------------------------------------------------------------------
+-- Querying Metadata for Staged Files
+
+create or replace file format myformat
+  type = 'csv'
+  field_delimiter = '|'
+;
+
+SELECT
+  METADATA$FILENAME,
+  METADATA$FILE_ROW_NUMBER,
+  METADATA$FILE_CONTENT_KEY,
+  METADATA$FILE_LAST_MODIFIED,
+  METADATA$START_SCAN_TIME, 
+  t.$1,
+  t.$2
+FROM @mystage1 (file_format => myformat) t
+;
+
+create or replace file format my_json_format
+  type = 'json';
+
+create or replace stage mystage2
+  file_format = my_json_format;
+
+SELECT
+  metadata$filename,
+  metadata$file_row_number,
+  parse_json($1)
+ FROM @mystage1/tmp/data1.json (file_format => my_json_format);
+
+CREATE OR REPLACE temp TABLE table1 (
+  filename varchar,
+  file_row_number int,
+  file_content_key varchar,
+  file_last_modified timestamp_ntz,
+  start_scan_time timestamp_ltz,
+  col1 varchar,
+  col2 varchar
+);
+
+COPY INTO table1(filename, file_row_number, file_content_key, file_last_modified, start_scan_time, col1, col2)
+  FROM (SELECT METADATA$FILENAME, METADATA$FILE_ROW_NUMBER, METADATA$FILE_CONTENT_KEY, METADATA$FILE_LAST_MODIFIED, METADATA$START_SCAN_TIME, t.$1, t.$2 FROM @mystage1/tmp/data1.csv (file_format => myformat) t);
+
+SELECT * FROM table1;
+
+
+
+
+
+
+
+
+
+-------------------------------------------------------------------------------------------------
+-- timestamp
+
+SELECT TO_TIMESTAMP(31000000),
+       TO_TIMESTAMP(PARSE_JSON(31000000)),
+       PARSE_JSON(31000000)::TIMESTAMP_NTZ,
+       TO_TIMESTAMP(PARSE_JSON(31000000)::INT),
+       PARSE_JSON(31000000)::INT::TIMESTAMP_NTZ
+
+;
+
+alter session set timezone = 'Asia/Tokyo';
+
+select current_timestamp();
+
+set crtime = current_timestamp();
+
+select to_timestamp_tz($crtime);
+
+select to_timestamp_ntz($crtime);
+
+SELECT TO_TIMESTAMP_TZ('04/05/2024 01:02:03', 'mm/dd/yyyy hh24:mi:ss');
+
+
+ALTER SESSION SET TIMESTAMP_OUTPUT_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF9 TZH:TZM';
+
+SELECT TO_TIMESTAMP_NTZ(40 * 365.25 * 86400);
+
+
+CREATE OR REPLACE temp TABLE demo1 (
+  description VARCHAR,
+  value VARCHAR -- string rather than bigint
+);
+
+INSERT INTO demo1 (description, value) VALUES
+  ('Seconds',      '31536000'),
+  ('Milliseconds', '31536000000'),
+  ('Microseconds', '31536000000000'),
+  ('Nanoseconds',  '31536000000000000');
+
+
+select
+  description,
+  value,
+  to_timestamp(value),
+  to_date(value)
+from demo1
+order by value;
+
+
+
+-------------------------------------------------------------------------------------------------
+-- Visualizing Worksheet Data
+
+select
+  count(o_orderdate) as orderdates,
+  o_orderdate as date
+from orders
+where
+   o_orderdate = :daterange
+group by
+  :datebucket(o_orderdate), o_orderdate
+order by
+  o_orderdate
+limit 10
+;
+
+-------------------------------------------------------------------------------------------------
+-- explain
+
+drop table z1;
+drop table z2;
+drop table z3;
+
+CREATE temp TABLE Z1 (ID INTEGER);
+CREATE temp TABLE Z2 (ID INTEGER);
+CREATE temp TABLE Z3 (ID INTEGER);
+
+insert into z1 values (1), (2), (3);
+insert into z2 values (1), (2), (4);
+
+
+
+EXPLAIN USING TABULAR 
+SELECT Z1.ID, Z2.ID 
+    FROM Z1, Z2
+    WHERE Z2.ID = Z1.ID;
+
+explain using text
+    select
+        z1.id,
+        z2.id
+    from z1, z2
+    where z2.id = z1.id
+;
+
+EXPLAIN USING JSON SELECT Z1.ID, Z2.ID 
+    FROM Z1, Z2
+    WHERE Z2.ID = Z1.ID;
+
+
+-------------------------------------------------------------------------------------------------
+-- SPLIT_TO_TABLE
+
+select table1.value
+    from table(split_to_table('a,b,c', ',')) table1
+    order by table1.value;
+
+
+create or replace temp table splittable (v varchar);
+insert into splittable (v) values ('a.b.c'), ('d'), ('');
+
+select * from splittable;
+
+select * from splittable, lateral split_to_table(splittable.v, '.')
+order by seq, index;
+
+-- select * from split_to_table(splittable.v, '.');
+
+drop table authors_books_test;
+CREATE OR REPLACE temp TABLE authors_books_test (author VARCHAR, titles VARCHAR);
+INSERT INTO authors_books_test (author, titles) VALUES
+  ('Nathaniel Hawthorne', 'The Scarlet Letter , The House of the Seven Gables,The Blithedale Romance'),
+  ('Herman Melville', 'Moby Dick,The Confidence-Man');
+SELECT * FROM authors_books_test;
+
+select author, trim(value) as title
+    from authors_books_test, lateral split_to_table(titles, ',')
+    order by author;
+
+SELECT author, TRIM(value) AS title
+    FROM authors_books_test, LATERAL SPLIT_TO_TABLE(titles, ',')
+  ORDER BY author;
+
+-------------------------------------------------------------------------------------------------
+-- Using Persisted Query Results　クエリ結果キャッシュ
+
+show tables;
+
+SELECT  *
+    FROM table(RESULT_SCAN(LAST_QUERY_ID()))
+    -- WHERE "rows" = 0
+    ;
+
+SHOW TABLES;
+
+SELECT
+  *
+FROM
+  TABLE (RESULT_SCAN (LAST_QUERY_ID ()));
 
 
 
