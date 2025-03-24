@@ -5,6 +5,140 @@ use schema public;
 -------------------------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------------------------
+-- access history
+show tables;
+
+select * from orders sample(10);
+
+use role accountadmin;
+select * from snowflake.account_usage.access_history
+order by query_start_time desc
+limit 10;
+
+select 
+  user_name,
+  query_id,
+  query_start_time,
+  direct_objects_accessed,
+  base_objects_accessed
+from snowflake.account_usage.access_history,
+
+where
+  query_start_time >= dateadd(day, -7, current_date)
+  -- and
+  -- base_objects_accessed alike '%orders%'
+order by 3 desc;
+
+SELECT distinct user_name
+FROM access_history
+     , lateral flatten(base_objects_accessed) f1
+WHERE f1.value:"objectId"::int=<fill_in_object_id>
+AND f1.value:"objectDomain"::string='Table'
+AND query_start_time >= dateadd('day', -30, current_timestamp())
+;
+
+desc table orders;
+
+show tables;
+
+SHOW OBJECTS IN SCHEMA tacchan_db.public;
+
+SELECT *
+FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()))
+WHERE "name" = 'orders';
+
+use role accountadmin;
+use schema snowflake.account_usage;
+
+select * from tables
+where table_name = 'ORDERS'
+  and deleted is null
+;
+
+-- 7172
+
+SELECT distinct user_name
+FROM access_history
+     , lateral flatten(base_objects_accessed) f1
+WHERE f1.value:"objectId"::int=7172
+AND f1.value:"objectDomain"::string='Table'
+AND query_start_time >= dateadd('day', -30, current_timestamp())
+;
+
+SELECT query_id
+       , query_start_time
+FROM access_history
+     , lateral flatten(base_objects_accessed) f1
+WHERE f1.value:"objectId"::int=7172
+AND f1.value:"objectDomain"::string='Table'
+AND query_start_time >= dateadd('day', -30, current_timestamp())
+;
+
+
+select 
+  distinct f4.value as column_name
+from access_history,
+  lateral flatten(base_objects_accessed) f1,
+  lateral flatten(f1.value) f2,
+  lateral flatten(f2.value) f3,
+  lateral flatten(f3.value) f4
+where f1.value:"objectId"::int=7172
+  and f1.value:"objectDomain"::string='Table'
+  and f4.key = 'columnName'
+;
+
+-- stage
+use role sysadmin;
+use schema tacchan_db.public;
+
+list @mystage1;
+
+select $1, $2 from @mystage1/tmp/data1.csv (file_format => myformat);
+
+create table table1 (col1 varchar, col2 varchar);
+
+copy into table1
+from (select $1, $2 from @mystage1/tmp/data1.csv (file_format => myformat));
+
+-- あとで書き込みを見る
+
+copy into @%orders/orders1.csv
+  from (select * from orders sample(1));
+
+-- 機密性の高い
+-- drop table t1;
+create schema test_schema;
+use schema test_schema;
+create or replace table T1(content variant);
+insert into T1(content) select parse_json('{"name": "A", "id":1}');
+
+-- drop table t6;
+create table t6 like t1;
+insert into t6 select * from t1 sample(10);
+
+-- s6
+create stage s1;
+copy into @s1 from t1;
+
+create table t2 as
+  select content:"name" as name,
+         content:"id" as id
+  from t1;
+
+create stage s2;
+copy into @s2 from t1;
+
+create or replace table T3(customer_info variant);
+copy into T3 from @s1;
+
+-- T1 -> T4
+create or replace table T4(name string, id string, address string);
+insert into T4(name, id) select content:"name", content:"id" from T1;
+
+-- T6 -> T7
+create table T7 as select * from T6;
+
+-------------------------------------------------------------------------------------------------
 -- row access policy
 
 show roles;
