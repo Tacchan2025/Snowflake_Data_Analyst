@@ -7,6 +7,404 @@ use schema public;
 -------------------------------------------------------------------------------------------------
 -- row access policy
 
+show roles;
+
+use role useradmin;
+drop role mapping_role;
+drop role sales_analyst_role;
+drop role schema_owner_role;
+
+create role schema_owner_role;
+grant role schema_owner_role to role sysadmin;
+grant role schema_owner_role to user tacchan;
+
+use role sysadmin;
+grant usage on database tacchan_db to role schema_owner_role;
+grant create schema on database tacchan_db to role schema_owner_role;
+
+
+
+-- use role accouadmin;
+-- drop schema security;
+
+use role sysadmin;
+grant usage on warehouse tacchan_wh to role schema_owner_role;
+
+use role schema_owner_role;
+use warehouse tacchan_wh;
+create schema security;
+use schema security;
+
+
+CREATE or replace table sales (
+  customer   varchar,
+  product    varchar,
+  spend      decimal(20, 2),
+  sale_date  date,
+  region     varchar
+);
+
+
+
+INSERT INTO sales (customer, product, spend, sale_date, region)
+VALUES 
+  ('Alice',   'Laptop',    1200.00, '2024-01-15', 'North'),
+  ('Bob',     'Phone',      800.50, '2024-02-20', 'East'),
+  ('Charlie', 'Tablet',     450.99, '2024-03-05', 'South'),
+  ('Diana',   'Monitor',    300.00, '2024-01-22', 'West'),
+  ('Eve',     'Laptop',    1350.75, '2024-02-10', 'North'),
+  ('Frank',   'Phone',      699.99, '2024-03-12', 'East'),
+  ('Grace',   'Tablet',     499.95, '2024-02-28', 'South'),
+  ('Heidi',   'Monitor',    280.00, '2024-01-30', 'West'),
+  ('Ivan',    'Laptop',    1100.00, '2024-03-01', 'North'),
+  ('Judy',    'Phone',      899.90, '2024-02-05', 'East');
+
+
+CREATE TABLE security.salesmanagerregions (
+  sales_manager varchar,
+  region        varchar
+);
+
+INSERT INTO security.salesmanagerregions (sales_manager, region)
+VALUES
+  ('John Smith',    'North'),
+  ('Emily Davis',   'East'),
+  ('Michael Brown', 'South'),
+  ('Sarah Wilson',  'West');
+
+use role useradmin;
+create role mapping_role;
+create role sales_manager_role;
+create role sales_analytics_role;
+
+use role securityadmin;
+grant usage on database tacchan_db to role mapping_role;
+grant usage on schema tacchan_db.security to role mapping_role;
+
+use role schema_owner_role;
+grant select on table salesmanagerregions to role mapping_role;
+
+use role useradmin;
+grant role mapping_role to user tacchan;
+
+use role sysadmin;
+grant usage on warehouse tacchan_wh to role mapping_role;
+
+use role mapping_role;
+use warehouse tacchan_wh;
+use schema tacchan_db.security;
+
+select * from salesmanagerregions;
+
+use role useradmin;
+create role sales_executive_role;
+
+
+use role schema_owner_role;
+
+create or replace row access policy security.sales_policy as
+(sales_region varchar) returns boolean ->
+  'sales_executive_role' = current_role()
+    or exists (
+      select 1 from salesmanagerregions
+        where sales_manager = current_role()
+        and region = sales_region
+    )
+;
+
+-- use role securityadmin;
+USE ROLE SECURITYADMIN;
+ß
+ALTER TABLE sales ADD ROW ACCESS POLICY tacchan_db.security.sales_policy ON (region);
+
+
+
+------------------------
+-- grant
+use role securityadmin;
+grant ownership on row access policy tacchan_db.security.sales_policy to mapping_role;
+
+-- grant ownership on row access policy tacchan_db.security.sales_policy to role schema_owner_role;
+
+grant apply on row access policy tacchan_db.security.sales_policy to role sales_analyst_role;
+
+use role useradmin;
+grant role mapping_role to role schema_owner_role;
+
+
+-- grant data usage, select
+use role sysadmin;
+grant usage on database tacchan_db to role mapping_role;
+grant usage on schema security to role mapping_role;
+
+use role schema_owner_role;
+-- grant select on table sales to role mapping_role;
+-- grant all on table sales to role mapping_role;
+
+grant all on table sales to 
+
+
+---------------
+-- role organization
+use role useradmin;
+drop role sales_analytics_role;
+
+create role sales_analyst_role;
+
+
+
+-------------------------------------------------------------------------------------------------
+-- regr_
+
+CREATE OR REPLACE temp TABLE aggr(k INT, v DECIMAL(10,2), v2 DECIMAL(10, 2));
+INSERT INTO aggr VALUES(1, 10, null);
+INSERT INTO aggr VALUES(2, 10, 11), (2, 20, 22), (2, 25, null), (2, 30, 35);
+
+SELECT k, REGR_INTERCEPT(v, v2), regr_slope(v, v2)
+FROM aggr GROUP BY k;
+
+
+-------------------------------------------------------------------------------------------------
+-- regexp_like
+
+CREATE OR REPLACE temp TABLE cities(city varchar(20));
+INSERT INTO cities VALUES
+  ('Sacramento'),
+  ('San Francisco'),
+  ('San Jose'),
+  (null);
+
+select * from cities
+where regexp_like(city, 'san.*', 'i')
+;
+
+
+-------------------------------------------------------------------------------------------------
+-- Querying Semi-structured Data
+-- https://docs.snowflake.com/ja/user-guide/querying-semistructured
+
+CREATE OR REPLACE TABLE car_sales
+( 
+  src variant
+)
+AS
+SELECT PARSE_JSON(column1) AS src
+FROM VALUES
+('{ 
+    "date" : "2017-04-28", 
+    "dealership" : "Valley View Auto Sales",
+    "salesperson" : {
+      "id": "55",
+      "name": "Frank Beasley"
+    },
+    "customer" : [
+      {"name": "Joyce Ridgely", "phone": "16504378889", "address": "San Francisco, CA"}
+    ],
+    "vehicle" : [
+      {"make": "Honda", "model": "Civic", "year": "2017", "price": "20275", "extras":["ext warranty", "paint protection"]}
+    ]
+}'),
+('{ 
+    "date" : "2017-04-28", 
+    "dealership" : "Tindel Toyota",
+    "salesperson" : {
+      "id": "274",
+      "name": "Greg Northrup"
+    },
+    "customer" : [
+      {"name": "Bradley Greenbloom", "phone": "12127593751", "address": "New York, NY"}
+    ],
+    "vehicle" : [
+      {"make": "Toyota", "model": "Camry", "year": "2017", "price": "23500", "extras":["ext warranty", "rust proofing", "fabric protection"]}  
+    ]
+}') v;
+
+select * from car_sales;
+
+create temp table t1 as
+select src:dealership, src:dealership::varchar
+  from car_sales
+  order by 1;
+
+DESCRIBE RESULT last_query_id();
+
+select src:salesperson.name
+  from car_sales
+  order by 1
+;
+
+select src['salesperson']['name']
+  from car_sales;
+
+select src:customer[0].name, src:vehicle[0]
+from car_sales;
+
+CREATE TABLE pets (v variant);
+
+INSERT INTO pets SELECT PARSE_JSON ('{"species":"dog", "name":"Fido", "is_dog":"true"} ');
+INSERT INTO pets SELECT PARSE_JSON ('{"species":"cat", "name":"Bubby", "is_dog":"false"}');
+INSERT INTO pets SELECT PARSE_JSON ('{"species":"cat", "name":"dog terror", "is_dog":"false"}');
+
+
+select * from pets;
+
+select
+  a.v,
+  b.key,
+  b.value
+from pets a, 
+      lateral  flatten(input => a.v) b
+where b.value like '%dog%'
+;
+
+SELECT a.v, b.key, b.value FROM pets a,LATERAL FLATTEN(input => a.v) b
+WHERE b.value LIKE '%dog%';
+
+select * from table(flatten(pets))
+;
+
+SELECT REGEXP_REPLACE(f.path, '\\[[0-9]+\\]', '[]') AS "Path",
+  TYPEOF(f.value) AS "Type",
+  COUNT(*) AS "Count"
+FROM pets a,
+LATERAL FLATTEN(a.v, RECURSIVE=>true) f
+GROUP BY 1, 2 ORDER BY 1, 2;
+
+SELECT *
+FROM pets a,
+LATERAL FLATTEN(a.v) f
+-- GROUP BY 1, 2 ORDER BY 1, 2
+;
+
+desc table pets;
+
+
+select
+  t.v,
+  f.seq,
+  f.key,
+  f.path,
+  regexp_count(f.path, '\\.|\\[') + 1 as level,
+  typeof(f.value) as "Type",
+  f.index,
+  f.value as clv,
+  f.this as alv
+from pets t
+  lateral flatten(t.v, recursive=>true) f
+;
+
+
+
+SELECT
+  t.v,
+  f.seq,
+  f.key,
+  f.path,
+  REGEXP_COUNT(f.path,'\\.|\\[') +1 AS Level,
+  TYPEOF(f.value) AS "Type",
+  f.index,
+  f.value AS "Current Level Value",
+  f.this AS "Above Level Value"
+FROM pets t,
+LATERAL FLATTEN(t.v, recursive=>true) f;
+
+
+select
+  vm.value:make::string as mk,
+  vm.value:model::string as md,
+  ve.value::string as ex
+from car_sales,
+  lateral flatten(input => src:vehicle) vm,
+  lateral flatten(input => vm.value:extras) ve
+order by 1, 2, 3
+;
+
+
+CREATE OR replace TABLE colors (v variant);
+
+INSERT INTO
+   colors
+   SELECT
+      parse_json(column1) AS v
+   FROM
+   VALUES
+     ('[{r:255,g:12,b:0},{r:0,g:255,b:0},{r:0,g:0,b:255}]'),
+     ('[{c:0,m:1,y:1,k:0},{c:1,m:0,y:1,k:0},{c:1,m:1,y:0,k:0}]')
+    v;
+
+select * from colors;
+desc table colors;
+
+select *,
+  get(v, array_size(v) + 1),
+  get(v, array_size(v) - 1)
+from colors;
+
+select get_path(src, 'vehicle[0]:make') from car_sales;
+
+desc file format my_json_format;
+
+list @mystage1;
+
+select 
+  'The First Employee Record is ' ||
+  s.$1:root[0].employees[0].firstName ||
+  ' ' || s.$1:root[0].employees[0].lastName
+
+from @mystage1/tmp/contacts.json
+(file_format => 'my_json_format') as s
+;
+
+desc table car_sales;
+desc stage @mystage1;
+
+show tables like '%customer%';
+
+
+CREATE OR REPLACE TABLE jcustomers AS
+SELECT
+   $1 AS id,
+   parse_json($2) AS info
+FROM
+   VALUES
+      (12712555, '{"name": {"first": "John", "last":"Smith"}}'),
+      (98127771, '{"name": {"first": "Jane", "last":"Doe"}}');
+
+select * from jcustomers;
+
+SELECT
+   id,
+   info:name.first AS first_name,
+   info:name.last AS last_name
+FROM
+   jcustomers;
+  
+DESCRIBE RESULT last_query_id();
+
+-------------------------------------------------------------------------------------------------
+-- study test guide
+SELECT n,
+  ROW_NUMBER() OVER (ORDER BY n) as row_number,
+  RANK() OVER (ORDER BY n) as rank,
+  DENSE_RANK() OVER (ORDER BY n) as dense_rank,
+  NTILE(2) OVER (ORDER BY n) as ntile
+FROM (VALUES (34), (14), (34), (55))
+AS Numbers(n);
+
+select src:
+
+
+
+/* 
+D, D, B, (C,E), D
+
+d, b, b, ce, d
+
+半構造化　→ Fundamental 演習
+ランク系
+daterange
+*/
+
 -------------------------------------------------------------------------------------------------
 -- Querying Metadata for Staged Files
 
