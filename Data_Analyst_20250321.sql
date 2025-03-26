@@ -2,7 +2,139 @@ use role sysadmin;
 use warehouse tacchan_wh;
 use database tacchan_db;
 use schema public;
--------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------
+
+--------------------------------------------------------------------------
+-- mv
+CREATE TABLE inventory (product_ID INTEGER, wholesale_price FLOAT,
+  description VARCHAR);
+    
+CREATE OR REPLACE MATERIALIZED VIEW mv1 AS
+  SELECT product_ID, wholesale_price FROM inventory;
+
+INSERT INTO inventory (product_ID, wholesale_price, description) VALUES 
+    (1, 1.00, 'cog');
+
+SELECT product_ID, wholesale_price FROM mv1;
+
+CREATE or replace table sales (product_ID INTEGER, quantity INTEGER, price FLOAT);
+
+INSERT INTO sales (product_ID, quantity, price) VALUES 
+   (1,  1, 1.99);
+
+CREATE or replace VIEW profits AS
+  SELECT m.product_ID, SUM(IFNULL(s.quantity, 0)) AS quantity,
+      SUM(IFNULL(quantity * (s.price - m.wholesale_price), 0)) AS profit
+    FROM mv1 AS m LEFT OUTER JOIN sales AS s ON s.product_ID = m.product_ID
+    GROUP BY m.product_ID;
+
+select * from profits;
+
+ALTER MATERIALIZED VIEW mv1 SUSPEND;
+    
+INSERT INTO inventory (product_ID, wholesale_price, description) VALUES 
+    (2, 2.00, 'sprocket');
+
+INSERT INTO sales (product_ID, quantity, price) VALUES 
+   (2, 10, 2.99),
+   (2,  1, 2.99);
+
+SELECT * FROM profits ORDER BY product_ID;
+
+ALTER MATERIALIZED VIEW mv1 RESUME;
+
+CREATE TABLE pipeline_segments (
+    segment_ID BIGINT,
+    material VARCHAR, -- e.g. copper, cast iron, PVC.
+    installation_year DATE,  -- older pipes are more likely to be corroded.
+    rated_pressure FLOAT  -- maximum recommended pressure at installation time.
+    );
+    
+INSERT INTO pipeline_segments 
+    (segment_ID, material, installation_year, rated_pressure)
+  VALUES
+    (1, 'PVC', '1994-01-01'::DATE, 60),
+    (2, 'cast iron', '1950-01-01'::DATE, 120)
+    ;
+
+CREATE TABLE pipeline_pressures (
+    segment_ID BIGINT,
+    pressure_psi FLOAT,  -- pressure in Pounds per Square Inch
+    measurement_timestamp TIMESTAMP
+    );
+INSERT INTO pipeline_pressures 
+   (segment_ID, pressure_psi, measurement_timestamp) 
+  VALUES
+    (2, 10, '2018-09-01 00:01:00'),
+    (2, 95, '2018-09-01 00:02:00')
+    ;
+
+CREATE MATERIALIZED VIEW vulnerable_pipes 
+  (segment_ID, installation_year, rated_pressure) 
+  AS
+    SELECT segment_ID, installation_year, rated_pressure
+        FROM pipeline_segments 
+        WHERE material = 'cast iron' AND installation_year < '1980'::DATE;
+
+ALTER MATERIALIZED VIEW vulnerable_pipes CLUSTER BY (installation_year);
+
+CREATE VIEW high_risk AS
+    SELECT seg.segment_ID, installation_year, measurement_timestamp::DATE AS measurement_date, 
+         DATEDIFF('YEAR', installation_year::DATE, measurement_timestamp::DATE) AS age, 
+         rated_pressure - age AS safe_pressure, pressure_psi AS actual_pressure
+       FROM vulnerable_pipes AS seg INNER JOIN pipeline_pressures AS psi 
+           ON psi.segment_ID = seg.segment_ID
+       WHERE pressure_psi > safe_pressure
+       ;
+
+select * from high_risk;
+
+--------------------------------------------------------------------------
+-- count
+
+CREATE TABLE basic_example (i_col INTEGER, j_col INTEGER);
+INSERT INTO basic_example VALUES
+    (11,101), (11,102), (11,NULL), (12,101), (NULL,101), (NULL,102);
+
+select * from basic_example
+order by i_col;
+
+SELECT COUNT(*) AS "All",
+       COUNT(* ILIKE 'i_c%') AS "ILIKE",
+       COUNT(* EXCLUDE i_col) AS "EXCLUDE",
+       COUNT(i_col) AS "i_col", 
+       COUNT(DISTINCT i_col) AS "DISTINCT i_col", 
+       COUNT(j_col) AS "j_col", 
+       COUNT(DISTINCT j_col) AS "DISTINCT j_col"
+  FROM basic_example;
+
+SELECT i_col, COUNT(*), COUNT(j_col)
+    FROM basic_example
+    GROUP BY i_col
+    ORDER BY i_col;
+
+CREATE OR REPLACE TABLE count_example_with_variant_column (
+  i_col INTEGER, 
+  j_col INTEGER, 
+  v VARIANT);
+
+
+
+INSERT INTO count_example_with_variant_column (i_col, j_col, v) 
+  VALUES (NULL, 10, NULL);
+INSERT INTO count_example_with_variant_column (i_col, j_col, v) 
+  SELECT 1, 11, PARSE_JSON('{"Title": null}');
+INSERT INTO count_example_with_variant_column (i_col, j_col, v) 
+  SELECT 2, 12, PARSE_JSON('{"Title": "O"}');
+INSERT INTO count_example_with_variant_column (i_col, j_col, v) 
+  SELECT 3, 12, PARSE_JSON('{"Title": "I"}');
+
+SELECT i_col, j_col, v, v:Title
+    FROM count_example_with_variant_column
+    ORDER BY i_col;
+
+SELECT COUNT(v:Title)
+    FROM count_example_with_variant_column;
 
 -------------------------------------------------------------------------------------------------
 -- join
