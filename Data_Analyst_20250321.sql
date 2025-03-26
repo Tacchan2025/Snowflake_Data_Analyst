@@ -2,7 +2,66 @@ use role sysadmin;
 use warehouse tacchan_wh;
 use database tacchan_db;
 use schema public;
------------------------------------------------------------------
+--------------------------------------------------------------------------
+
+SELECT * FROM (SELECT * FROM orders sample (1));
+
+--------------------------------------------------------------------------
+-- datediff
+select DATEDIFF('month', '2024-11-28', '2024-12-05');
+
+--------------------------------------------------------------------------
+-- objectagg
+CREATE OR REPLACE TABLE objectagg_example(g NUMBER, k VARCHAR(30), v VARIANT);
+INSERT INTO objectagg_example SELECT 0, 'name', 'Joe'::VARIANT;
+INSERT INTO objectagg_example SELECT 0, 'age', 21::VARIANT;
+INSERT INTO objectagg_example SELECT 1, 'name', 'Sue'::VARIANT;
+INSERT INTO objectagg_example SELECT 1, 'zip', 94401::VARIANT;
+
+SELECT * FROM objectagg_example;
+
+SELECT g, OBJECT_AGG(k, v) FROM objectagg_example GROUP BY g;
+
+
+--------------------------------------------------------------------------
+-- semi-strucutured data
+
+
+SET my_variable = 10;
+SELECT {'key1': $my_variable+1, 'key2': $my_variable+2};
+
+CREATE OR REPLACE TABLE demo_ca_provinces (province VARCHAR, capital VARCHAR);
+INSERT INTO demo_ca_provinces (province, capital) VALUES
+  ('Ontario', 'Toronto'),
+  ('British Columbia', 'Victoria');
+
+SELECT province, capital
+  FROM demo_ca_provinces
+  ORDER BY province;
+
+INSERT INTO my_object_table (my_object)
+  SELECT {*} FROM demo_ca_provinces;
+
+SELECT * FROM my_object_table;
+CREATE OR REPLACE TABLE my_object_table (my_object OBJECT);
+
+INSERT INTO my_object_table (my_object)
+  SELECT { 'PROVINCE': 'Alberta'::VARIANT , 'CAPITAL': 'Edmonton'::VARIANT };
+
+INSERT INTO my_object_table (my_object)
+  SELECT OBJECT_CONSTRUCT('PROVINCE', 'Manitoba'::VARIANT , 'CAPITAL', 'Winnipeg'::VARIANT );
+
+SELECT * FROM my_object_table;
+
+CREATE OR REPLACE TABLE object_example (object_column OBJECT);
+INSERT INTO object_example (object_column)
+  SELECT OBJECT_CONSTRUCT('thirteen', 13, 'zero', 0);
+SELECT * FROM object_example;
+
+SELECT OBJECT_CONSTRUCT(
+  'name', 'Jones'::VARIANT,
+  'age',  42::VARIANT);
+
 --------------------------------------------------------------------------
 -- avg
 CREATE OR REPLACE TABLE avg_example(int_col int, d decimal(10,5), s1 varchar(10), s2 varchar(10));
