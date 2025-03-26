@@ -5,6 +5,296 @@ use schema public;
 -------------------------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------------------------
+-- join
+CREATE or replace TABLE PROJECTS (
+    PROJECT_ID INTEGER,
+    PROJECT_NAME STRING
+);
+
+CREATE or replace TABLE EMPLOYEES (
+    EMPLOYEE_ID INTEGER,
+    EMPLOYEE_NAME STRING,
+    PROJECT_ID INTEGER
+);
+
+INSERT INTO PROJECTS (PROJECT_ID, PROJECT_NAME) VALUES
+(1000, 'COVID-19 Vaccine'),
+(1001, 'Malaria Vaccine'),
+(1002, 'NewProject');
+
+INSERT INTO EMPLOYEES (EMPLOYEE_ID, EMPLOYEE_NAME, PROJECT_ID) VALUES
+(10000001, 'Terry Smith', 1000),
+(10000002, 'Maria Inverness', 1000),
+(10000003, 'Pat Wang', 1001),
+(10000004, 'NewEmployee', NULL);
+
+
+SELECT p.project_ID, project_name, employee_ID, employee_name, e.project_ID
+    FROM projects AS p JOIN employees AS e
+        ON e.project_ID = p.project_ID
+    ORDER BY p.project_ID, e.employee_ID;
+
+SELECT *
+    FROM projects NATURAL JOIN employees
+    ORDER BY employee_ID;
+
+SELECT *
+    FROM projects AS p INNER JOIN employees AS e
+        ON e.project_ID = p.project_ID
+    ORDER BY p.project_ID, e.employee_ID;
+
+explain
+SELECT *
+    FROM projects, employees
+    ORDER BY employee_ID;
+
+SELECT p.project_name, e.employee_name
+    FROM projects AS p FULL OUTER JOIN employees AS e
+        ON e.project_ID = p.project_ID
+    ORDER BY p.project_name, e.employee_name;
+
+SELECT p.project_name, e.employee_name
+    FROM projects AS p CROSS JOIN employees AS e
+    ORDER BY p.project_ID, e.employee_ID;
+
+-------------------------------------------------------------------------------------------------
+-- sha2
+SELECT sha2('Snowflake', 224);
+
+SELECT sha2(null, 256);
+
+SELECT sha2(1, 256);
+
+
+create or replace table t1 (c1 varchar, c2 number);
+insert into t1 values ('a', 1), ('b', 2), ('c', 3);
+
+select c1, sha2(c1, 256) from t1;
+select c2, sha2(c2, 256) from t1;
+
+-------------------------------------------------------------------------------------------------
+-- load conversion
+
+create or replace table mytable (
+  col1 number autoincrement start 1 increment 1,
+  col2 varchar,
+  col3 varchar
+  );
+
+select $1, $2 from @mystage1/tmp/myfile.csv;
+
+copy into mytable (col2, col3)
+from (
+  select $1, $2
+  from @mystage1/tmp/myfile.csv t
+)
+;
+
+select * from mytable;
+
+-- json
+create or replace stage mystage_json
+  file_format = (type = 'json');
+
+select $1 from @mystage_json/sales.json;
+
+list @mystage_json;
+
+ CREATE OR REPLACE TABLE home_sales (
+   CITY VARCHAR,
+   POSTAL_CODE VARCHAR,
+   SQ_FT NUMBER,
+   SALE_DATE DATE,
+   PRICE NUMBER
+ );
+
+ COPY INTO home_sales(city, postal_code, sq_ft, sale_date, price)
+ FROM (select
+ $1:location.city::varchar,
+ $1:location.zip::varchar,
+ $1:dimensions.sq_ft::number,
+ $1:sale_date::date,
+ $1:price::number
+ FROM @mystage_json/sales.json t);
+
+select * from home_sales;
+
+
+create or replace table flattened_source
+(seq string, key string, path string, index string, value variant, element variant)
+as
+  select
+    seq::string
+  , key::string
+  , path::string
+  , index::string
+  , value::variant
+  , this::variant
+  from @mystage_json/sales.json
+    , table(flatten(input => parse_json($1)));
+
+select * from flattened_source;
+
+list @mystage_json;
+
+-- @mystage_json/ipaddress.json
+
+select $1 from @mystage_json/ipaddress.json;
+
+create or replace table splitjson (
+  col1 array,
+  col2 array
+  );
+
+copy into splitjson
+  from (
+    select split($1:ip_address.router1, '.'), split($1:ip_address.router2, '.')
+    from @mystage_json/ipaddress.json t)
+;
+
+select * from splitjson;
+
+
+select
+ $1:location.city::varchar,
+ $1:location.zip::varchar,
+ $1:dimensions.sq_ft::number,
+ $1:sale_date::date,
+ $1:price::number
+ FROM @mystage_json/sales.json t;
+
+-------------------------------------------------------------------------------------------------
+-- timezone
+SELECT TO_TIMESTAMP_TZ('04/05/2024 01:02:03', 'mm/dd/yyyy hh24:mi:ss');
+
+SELECT TO_TIMESTAMP('2024/12/12 01:02:03');
+
+
+-------------------------------------------------------------------------------------------------
+-- parse json
+
+CREATE OR REPLACE TABLE vartab (n NUMBER(2), v VARIANT);
+
+INSERT INTO vartab
+  SELECT column1 AS n, PARSE_JSON(column2) AS v
+    FROM VALUES (1, 'null'), 
+                (2, null), 
+                (3, 'true'),
+                (4, '-17'), 
+                (5, '123.12'), 
+                (6, '1.912e2'),
+                (7, '"Om ara pa ca na dhih"  '), 
+                (8, '[-1, 12, 289, 2188, false,]'), 
+                (9, '{ "x" : "abc", "y" : false, "z": 10} ') 
+       AS vals;
+
+SELECT n, v, TYPEOF(v)
+  FROM vartab
+  ORDER BY n;
+
+desc table vartab;
+
+
+SELECT TO_JSON(PARSE_JSON('{"b":1,"a":2}')),
+       TO_JSON(PARSE_JSON('{"b":1,"a":2}')) = '{"b":1,"a":2}',
+       TO_JSON(PARSE_JSON('{"b":1,"a":2}')) = '{"a":2,"b":1}';
+
+
+select to_json(parse_json('{"b":1,"a":2}'));
+
+CREATE OR REPLACE TABLE jdemo3 (
+  variant1 VARIANT,
+  variant2 VARIANT);
+
+INSERT INTO jdemo3 (variant1, variant2)
+  SELECT
+    PARSE_JSON('{"PI":3.14}'),
+    TO_VARIANT('{"PI":3.14}');
+
+SELECT variant1,
+       TYPEOF(variant1),
+       variant2,
+       TYPEOF(variant2),
+       variant1 = variant2
+  FROM jdemo3;
+
+-------------------------------------------------------------------------------------------------
+-- using template
+
+show stages;
+show file formats;
+
+list @mystage1;
+
+-- error
+create or replace my_new_table
+using template (
+  select array_agg(object_construct(*))
+  from table(infer_schema(
+    location => '@mystage1/tmp/contacts.json',
+    file_format => 'my_json_format'
+  ))
+)
+;
+
+CREATE TABLE mytable
+  USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+      FROM TABLE(
+        INFER_SCHEMA(
+          LOCATION=>'@mystage1/tmp/contacts.json',
+          FILE_FORMAT=>'my_json_format'
+        )
+      ));
+
+select * from mytable;
+desc table mytable;
+
+
+-------------------------------------------------------------------------------------------------
+-- copy history
+
+select *
+from table(information_schema.copy_history(TABLE_NAME=>'ORDERS', START_TIME=> DATEADD(hours, -1, CURRENT_TIMESTAMP())));
+
+show tables;
+
+-------------------------------------------------------------------------------------------------
+-- Account Usage
+use role accountadmin;
+use schema snowflake.account_usage;
+
+select user_name,
+       count(*) as failed_logins,
+       avg(seconds_between_login_attempts) as average_seconds_between_login_attempts
+from (
+      select user_name,
+             timediff(seconds, event_timestamp, lead(event_timestamp)
+                 over(partition by user_name order by event_timestamp)) as seconds_between_login_attempts
+      from login_history
+      where event_timestamp > date_trunc(month, current_date)
+      and is_success = 'NO'
+     )
+group by 1
+order by 3;
+
+select warehouse_name,
+  sum(credits_used) as total_credits_used
+from warehouse_metering_history
+where start_time >= dateadd(month, -1, current_date)
+group by 1
+order by 2 desc;
+
+select user_name,
+       sum(execution_time) as average_execution_time
+from query_history
+where start_time >= date_trunc(month, current_date)
+group by 1
+order by 2 desc;
+
+
+
+-------------------------------------------------------------------------------------------------
 -- access history
 show tables;
 
