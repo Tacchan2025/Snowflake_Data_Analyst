@@ -4,12 +4,55 @@ use database tacchan_db;
 use schema public;
 -----------------------------------------------------------------
 --------------------------------------------------------------------------
+-- avg
+CREATE OR REPLACE TABLE avg_example(int_col int, d decimal(10,5), s1 varchar(10), s2 varchar(10));
+INSERT INTO avg_example VALUES
+    (1, 1.1, '1.1','one'), 
+    (1, 10, '10','ten'),
+    (2, 2.4, '2.4','two'), 
+    (2, NULL, NULL, 'NULL'),
+    (3, NULL, NULL, 'NULL'),
+    (NULL, 9.9, '9.9','nine');
+
+SELECT AVG(int_col), AVG(d), avg(distinct d), avg(s1), 
+-- avg(s2)
+    FROM avg_example;
+
+--------------------------------------------------------------------------
 -- flatten
 
 SELECT * FROM TABLE(FLATTEN(input => parse_json('{"a":1, "b":[77,88], "c": {"d":"X"}}'))) f;
 
 SELECT * FROM TABLE(FLATTEN(input => parse_json('{"a":1, "b":[77,88], "c": {"d":"X"}}'),
                             recursive => true )) f;
+
+ create or replace table persons as
+    select column1 as id, parse_json(column2) as c
+ from values
+   (12712555,
+   '{ name:  { first: "John", last: "Smith"},
+     contact: [
+     { business:[
+       { type: "phone", content:"555-1234" },
+       { type: "email", content:"j.smith@company.com" } ] } ] }'),
+   (98127771,
+   '{ name:  { first: "Jane", last: "Doe"},
+     contact: [
+     { business:[
+       { type: "phone", content:"555-1236" },
+       { type: "email", content:"j.doe@company.com" } ] } ] }') v;
+
+ SELECT id as "ID",
+   f.value AS "Contact",
+   f1.value:type AS "Type",
+   f1.value:content AS "Details"
+ FROM persons p,
+   lateral flatten(input => p.c, path => 'contact') f,
+   lateral flatten(input => f.value:business) f1;
+
+SELECT * FROM TABLE(FLATTEN(input => parse_json('{"a":1, "b":[77,88]}'), outer => true)) f;
+
+
 
 --------------------------------------------------------------------------
 -- mv
