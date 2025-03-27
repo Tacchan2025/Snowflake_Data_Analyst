@@ -3,6 +3,22 @@ use warehouse tacchan_wh;
 use database tacchan_db;
 use schema public;
 --------------------------------------------------------------------------
+-- null int constraint
+
+
+--------------------------------------------------------------------------
+-- split to table
+CREATE OR REPLACE TABLE splittable_strtok (v VARCHAR);
+INSERT INTO splittable_strtok (v) VALUES ('a-b'), ('c*de'), ('f*-g'), ('');
+SELECT * FROM splittable_strtok;
+
+SELECT *
+  FROM splittable_strtok, LATERAL STRTOK_SPLIT_TO_TABLE(splittable_strtok.v, '*-')
+  ORDER BY SEQ, INDEX;
+
+SELECT *
+  FROM splittable_strtok, LATERAL SPLIT_TO_TABLE(splittable_strtok.v, '*-')
+  ORDER BY SEQ, INDEX;
 
 --------------------------------------------------------------------------
 -- unpivot
